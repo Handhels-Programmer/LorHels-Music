@@ -58,9 +58,6 @@
                 <button onclick="changeView('home')" class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-zinc-800 transition-colors text-zinc-400" id="nav-home">
                     <i data-lucide="home"></i> Inicio
                 </button>
-                <button onclick="changeView('search')" class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-zinc-800 transition-colors text-zinc-400" id="nav-search">
-                    <i data-lucide="search"></i> Buscar
-                </button>
                 <button onclick="checkPremiumAccess('library')" class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-zinc-800 transition-colors text-zinc-400" id="nav-library">
                     <i data-lucide="library"></i> Tu Biblioteca
                 </button>
@@ -108,9 +105,9 @@
                 </div>
                 
                 <div class="space-y-2">
-                    <button onclick="togglePlan()" class="w-full bg-zinc-100 text-black py-2 rounded-lg text-sm font-bold hover:bg-white transition-colors">
-                        Cambiar Plan
-                    </button>
+                    <button onclick="openPremiumModal()" class="w-full bg-zinc-100 text-black py-2 rounded-lg text-sm font-bold hover:bg-white transition-colors">
+    Cambiar Plan
+</button>
                 </div>
             </div>
         </aside>
@@ -220,8 +217,25 @@
                                 <p class="text-[10px] text-zinc-500 uppercase font-bold">Pendientes</p>
                                 <p id="stat-pending-req" class="text-xl font-bold text-blue-500">0</p>
                             </div>
+                            <button onclick="openDirectAddSongModal()" class="w-full bg-blue-500 text-white py-4 rounded-xl font-bold hover:bg-blue-400 transition-colors flex items-center justify-center gap-2 mt-6 shadow-lg shadow-blue-500/20">
+    <i data-lucide="upload-cloud" class="w-5 h-5"></i> Publicar Nueva Canción Directamente
+</button>
                         </div>
                     </div>
+
+                    <div class="bg-zinc-900/50 border border-blue-500/30 rounded-2xl overflow-hidden mt-8">
+    <div class="p-6 border-b border-zinc-800 flex justify-between items-center bg-blue-500/5">
+        <h3 class="font-bold flex items-center gap-2 text-blue-500">
+            <i data-lucide="crown"></i> Activar Premium a Usuario
+        </h3>
+    </div>
+    <div class="p-6 flex flex-col md:flex-row gap-4">
+        <input type="email" id="admin-upgrade-email" placeholder="Correo del usuario (Ej: juan@gmail.com)" class="flex-1 bg-black border border-zinc-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors">
+        <button onclick="grantPremium()" class="bg-blue-500 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-blue-400 transition-colors flex items-center justify-center gap-2">
+            <i data-lucide="check-circle" class="w-4 h-4"></i> Activar por 1 Mes
+        </button>
+    </div>
+</div>
 
                     <div class="bg-zinc-900/50 border border-zinc-800 rounded-2xl overflow-hidden">
                         <div class="p-6 border-b border-zinc-800 flex justify-between items-center">
@@ -243,9 +257,9 @@
                     </div>
                     <h2 class="text-3xl font-bold mb-2">Función Premium</h2>
                     <p class="text-zinc-400 max-w-md mb-8">Guardar favoritos y crear listas personalizadas es exclusivo para usuarios Premium.</p>
-                    <button onclick="togglePlan()" class="bg-blue-500 text-black px-8 py-3 rounded-full font-bold hover:bg-emerald-400 transition-all">
-                        Hacerse Premium
-                    </button>
+                    <button onclick="openPremiumModal()" class="bg-blue-500 text-white px-8 py-3 rounded-full font-bold hover:bg-blue-400 transition-all shadow-lg shadow-blue-500/25">
+    Hacerse Premium
+</button>
                 </div>
 
             </div>
@@ -303,388 +317,329 @@
     </div>
 
     <script>
-        let songs = []; // Empezamos sin canciones hasta que Firebase cargue
-         
-        window.onload = () => {
-            // Ya no renderizamos aquí porque esperamos a Firebase
-            lucide.createIcons();
-            updatePlanUI();
-        };
+        // --- VARIABLES GLOBALES (UI y Audio) ---
+window.currentSongIndex = -1;
+window.isPlaying = false;
+window.isShuffle = false;
+window.repeatMode = 0; // 0: Apagado, 1: Todas, 2: Una
 
-        let currentPlaylist = [...songs];
-        let currentSongIndex = -1;
-        let isPlaying = false;
-        let isShuffle = false;
-        let isRepeat = false;
+const audio = document.getElementById('audio-element');
+const progressBar = document.getElementById('progress-bar');
+const volSlider = document.getElementById('volume-slider');
 
-        const audio = document.getElementById('audio-element');
-        const playBtn = document.getElementById('play-btn');
-        const progressBar = document.getElementById('progress-bar');
-        const volSlider = document.getElementById('volume-slider');
-
-        window.onload = () => {
-            renderSongs(songs);
-            lucide.createIcons();
-            updatePlanUI();
-        };
-
-        // --- NAVIGATION ---
-        function changeView(view) {
-            const views = ['home', 'request', 'admin', 'premium-wall'];
-            views.forEach(v => document.getElementById(`view-${v}`).classList.add('hidden'));
-            
-            const navButtons = ['home', 'search', 'library', 'request', 'admin'];
-            navButtons.forEach(btn => {
-                const el = document.getElementById(`nav-${btn}`);
-                if (el) el.classList.remove('active-link', 'text-white');
-            });
-
-            const currentView = document.getElementById(`view-${view}`);
-            if (currentView) currentView.classList.remove('hidden');
-
-            const activeBtn = document.getElementById(`nav-${view}`);
-            if (activeBtn) activeBtn.classList.add('active-link', 'text-white');
-
-            // Label Update
-            const labelMap = { 'home': 'Inicio', 'request': 'Solicitar', 'admin': 'Administración', 'search': 'Buscador', 'library': 'Biblioteca' };
-            document.getElementById('current-view-name').innerText = labelMap[view] || 'LorHels Music';
-        }
-
-        // --- CORE RENDER ---
-        window.renderSongs = function(songsToRender) {
-            const grid = document.getElementById('songs-grid');
-            if(!grid) return;
-            grid.innerHTML = '';
-            
-            // Leemos los favoritos de la nube (si no hay, usamos un arreglo vacío)
-            const favs = window.favorites || []; 
-
-            songsToRender.forEach((song) => {
-                const card = document.createElement('div');
-                card.className = "bg-zinc-900/40 p-4 rounded-xl hover:bg-zinc-800 transition-all cursor-pointer group relative";
-                card.onclick = () => playSong(song);
-                
-                card.innerHTML = `
-                    <div class="aspect-square bg-gradient-to-br ${song.color || 'from-zinc-700'} to-black rounded-lg mb-4 flex items-center justify-center relative overflow-hidden shadow-lg">
-                        <i data-lucide="music" class="w-12 h-12 text-white/50 group-hover:scale-110 transition-transform"></i>
-                        <button class="absolute bottom-2 right-2 w-10 h-10 bg-blue-500 text-black rounded-full shadow-xl flex items-center justify-center opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
-                             <i data-lucide="play" fill="currentColor" class="w-5 h-5"></i>
-                        </button>
-                    </div>
-                    <h3 class="font-bold truncate text-sm">${song.title}</h3>
-                    <p class="text-xs text-zinc-500 truncate mt-1">${Array.isArray(song.artists) ? song.artists.join(', ') : song.artist}</p>
-                    <div class="mt-2 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                         <span class="text-[10px] text-zinc-600 uppercase font-bold">${song.genre}</span>
-                         <button onclick="event.stopPropagation(); window.checkPremiumAccess('fav', '${song.id}')" class="text-zinc-500 hover:text-blue-500">
-                            <i data-lucide="heart" class="w-4 h-4 ${favs.find(f => f.id === song.id) ? 'fill-blue-500 text-blue-500' : ''}"></i>
-                         </button>
-                    </div>
-                `;
-                grid.appendChild(card);
-            });
-            lucide.createIcons();
-            
-            const totalSongsEl = document.getElementById('stat-total-songs');
-            if(totalSongsEl) totalSongsEl.innerText = window.songs ? window.songs.length : 0;
-        };
-
-        function updateAdminBadge() {
-            const badge = document.getElementById('request-badge');
-            const count = pendingRequests.length;
-            if (count > 0) {
-                badge.innerText = count;
-                badge.classList.remove('hidden');
-            } else {
-                badge.classList.add('hidden');
-            }
-            document.getElementById('stat-pending-req').innerText = count;
-            renderAdminRequests();
-        }
-
-        function renderAdminRequests() {
-            const list = document.getElementById('admin-requests-list');
-            if (pendingRequests.length === 0) {
-                list.innerHTML = '<div class="p-10 text-center text-zinc-500 italic">No hay solicitudes nuevas.</div>';
-                return;
-            }
-
-            list.innerHTML = '';
-            pendingRequests.forEach(req => {
-                const item = document.createElement('div');
-                item.className = "p-4 flex items-center justify-between hover:bg-zinc-800/50 transition-colors";
-                item.innerHTML = `
-                    <div class="flex items-center gap-4">
-                        <div class="w-10 h-10 bg-zinc-800 rounded-lg flex items-center justify-center text-blue-500">
-                            <i data-lucide="music-2"></i>
-                        </div>
-                        <div>
-                            <p class="font-bold text-sm">${req.title}</p>
-                            <p class="text-xs text-zinc-500">${req.artist} • ${req.genre}</p>
-                        </div>
-                    </div>
-                    <div class="flex gap-2">
-                        <button onclick="approveRequest('${req.id}')" class="bg-blue-500 text-black px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-emerald-400">Aprobar</button>
-                        <button onclick="rejectRequest('${req.id}')" class="bg-zinc-800 text-zinc-400 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-zinc-700">Rechazar</button>
-                    </div>
-                `;
-                list.appendChild(item);
-            });
-            lucide.createIcons();
-        }
-
-        function approveRequest(id) {
-            const index = pendingRequests.findIndex(r => r.id === id);
-            const req = pendingRequests[index];
-            
-            // Simulación de agregar a la lista global
-            const newSong = {
-                id: songs.length + 1,
-                title: req.title,
-                artist: req.artist,
-                genre: req.genre,
-                duration: 200, // random
-                url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", // fallback
-                color: "from-zinc-500"
-            };
-            
-            songs.push(newSong);
-            pendingRequests.splice(index, 1);
-            updateAdminBadge();
-            renderSongs(songs);
-            showNotification(`"${req.title}" ha sido agregada a la biblioteca`);
-        }
-
-        function rejectRequest(id) {
-            const index = pendingRequests.findIndex(r => r.id === id);
-            pendingRequests.splice(index, 1);
-            updateAdminBadge();
-            showNotification("Solicitud rechazada");
-        }
-
-        function playSong(song) {
-            const index = currentPlaylist.findIndex(s => s.id === song.id);
-            if (index !== -1) currentSongIndex = index;
-
-            // Cambiamos song.url por song.src (o mantenemos ambas por si acaso)
-            audio.src = song.src || song.url; 
-            audio.play();
-            isPlaying = true;
+// --- 1. NAVEGACIÓN ---
+window.changeView = function(view) {
+    const views = ['home', 'request', 'admin', 'premium-wall'];
+    views.forEach(v => {
+        const el = document.getElementById(`view-${v}`);
+        if(el) el.classList.add('hidden');
+    });
     
-            document.getElementById('player-title').innerText = song.title;
+    const navButtons = ['home', 'search', 'library', 'request', 'admin'];
+    navButtons.forEach(btn => {
+        const el = document.getElementById(`nav-${btn}`);
+        if (el) el.classList.remove('active-link', 'text-white');
+    });
+
+    const currentView = document.getElementById(`view-${view}`);
+    if (currentView) currentView.classList.remove('hidden');
+
+    const activeBtn = document.getElementById(`nav-${view}`);
+    if (activeBtn) activeBtn.classList.add('active-link', 'text-white');
+
+    const labelMap = { 'home': 'Inicio', 'request': 'Solicitar', 'admin': 'Administración', 'search': 'Buscador', 'library': 'Biblioteca' };
+    document.getElementById('current-view-name').innerText = labelMap[view] || 'LorHels Music';
     
-            // Como ahora 'artists' es un arreglo, los unimos con una coma
-            const nombreArtista = Array.isArray(song.artists) ? song.artists.join(', ') : song.artist;
-            document.getElementById('player-artist').innerText = nombreArtista;
+    // Si volvemos a inicio, nos aseguramos de mostrar todas las canciones de nuevo
+    if(view === 'home' && window.songs) {
+        document.getElementById('list-title').innerText = "Canciones Recomendadas";
+        window.renderSongs(window.songs);
+        window.currentPlaylist = [...window.songs];
+    }
+};
+
+// --- 2. RENDERIZADO VISUAL ---
+window.renderSongs = function(songsToRender, append = false) {
+    const grid = document.getElementById('songs-grid');
+    if(!grid) return;
+    if(!append) grid.innerHTML = ''; 
     
-            // Ponemos un color por defecto ya que no lo incluiste en la nueva lista
-            document.getElementById('player-img').className = `w-14 h-14 bg-gradient-to-br ${song.color || 'from-zinc-700'} to-black rounded-md flex items-center justify-center`;
-    
-            // Como no hay duración en tu nueva lista, ponemos 0 hasta que el audio cargue
-            document.getElementById('total-time').innerText = song.duration ? formatTime(song.duration) : "-:--";
-    
-            updatePlayBtn();
-            updateFavBtnUI(song.id);
-        }
+    const favs = window.favorites || []; 
 
-        window.updateFavBtnUI = function(songId) {
-            const btn = document.getElementById('player-fav-btn');
-            const favs = window.favorites || [];
-            
-            // Verificamos si la canción actual está en la lista de favoritos de la nube
-            const isFav = favs.some(f => f.id === songId);
-            btn.innerHTML = `<i data-lucide="heart" class="w-5 h-5 ${isFav ? 'fill-blue-500 text-blue-500' : ''}"></i>`;
-            lucide.createIcons();
-        };
-
-        // Esta función hace que el botón de corazón del reproductor de abajo funcione
-        window.toggleFavoriteCurrent = function() {
-            if(currentSongIndex === -1) return;
-            const currentSong = window.currentPlaylist[currentSongIndex];
-            if(currentSong) {
-                window.checkPremiumAccess('fav', currentSong.id);
-            }
-        };
-
-        function togglePlay() {
-            if (currentSongIndex === -1 && currentPlaylist.length > 0) { playSong(currentPlaylist[0]); return; }
-            isPlaying ? audio.pause() : audio.play();
-            isPlaying = !isPlaying;
-            updatePlayBtn();
-        }
-
-        function updatePlayBtn() {
-            playBtn.innerHTML = isPlaying ? '<i data-lucide="pause" fill="currentColor"></i>' : '<i data-lucide="play" fill="currentColor"></i>';
-            lucide.createIcons();
-        }
-
-        // --- PLAN & PREMIUM ---
-        function togglePlan() {
-            userPlan = (userPlan === 'basic') ? 'premium' : 'basic';
-            updatePlanUI();
-            showNotification(`Plan ${userPlan.toUpperCase()} activado`);
-            if (userPlan === 'basic' && !document.getElementById('view-premium-wall').classList.contains('hidden')) {
-                changeView('home');
-            }
-        }
-
-        function updatePlanUI() {
-            const tag = document.getElementById('user-plan-tag');
-            tag.innerText = userPlan === 'basic' ? 'Plan Básico' : 'Plan Premium';
-            tag.className = userPlan === 'basic' ? 'text-[10px] uppercase tracking-wider text-zinc-500 font-bold' : 'text-[10px] uppercase tracking-wider text-blue-500 font-bold';
-        }
-
-        // --- SEARCH Y FILTROS ---
-        window.handleSearch = function(q) {
-            if (!q.trim()) { 
-                renderSongs(window.songs); 
-                return; 
-            }
-            
-            const res = window.songs.filter(s => {
-                const tituloMatch = s.title.toLowerCase().includes(q.toLowerCase());
-                // Como los artistas pueden ser un arreglo, los unimos primero
-                const artistasTexto = Array.isArray(s.artists) ? s.artists.join(', ') : (s.artist || '');
-                const artistaMatch = artistasTexto.toLowerCase().includes(q.toLowerCase());
-                
-                return tituloMatch || artistaMatch;
-            });
-            
-            document.getElementById('list-title').innerText = `Resultados para "${q}"`;
-            renderSongs(res);
-        };
-
-        window.filterByGenre = function(g) {
-            // Aquí está la clave: usamos window.songs
-            const res = window.songs.filter(s => s.genre === g);
-            document.getElementById('list-title').innerText = `Género: ${g}`;
-            renderSongs(res);
-            window.currentPlaylist = res;
-        };
-
-        // --- AUDIO HELPERS ---
-        audio.ontimeupdate = () => {
-            const p = (audio.currentTime / audio.duration) * 100;
-            progressBar.value = p || 0;
-            document.getElementById('current-time').innerText = formatTime(audio.currentTime);
-        };
-        progressBar.oninput = () => audio.currentTime = (progressBar.value / 100) * audio.duration;
-        volSlider.oninput = () => audio.volume = volSlider.value;
-        function nextSong() {
-            currentSongIndex = isShuffle ? Math.floor(Math.random() * currentPlaylist.length) : (currentSongIndex + 1) % currentPlaylist.length;
-            playSong(currentPlaylist[currentSongIndex]);
-        }
-        function prevSong() {
-            currentSongIndex = (currentSongIndex - 1 + currentPlaylist.length) % currentPlaylist.length;
-            playSong(currentPlaylist[currentSongIndex]);
-        }
-        function toggleShuffle() { isShuffle = !isShuffle; document.getElementById('shuffle-btn').classList.toggle('text-blue-500'); }
-        function toggleRepeat() { isRepeat = !isRepeat; document.getElementById('repeat-btn').classList.toggle('text-blue-500'); }
-        audio.onended = () => isRepeat ? audio.play() : nextSong();
-        function formatTime(s) {
-            if (isNaN(s)) return "0:00";
-            const m = Math.floor(s / 60), sec = Math.floor(s % 60);
-            return `${m}:${sec.toString().padStart(2, '0')}`;
-        }
-        function showNotification(t) {
-            const n = document.getElementById('notification');
-            document.getElementById('notification-text').innerText = t;
-            n.classList.remove('translate-x-[150%]');
-            setTimeout(() => n.classList.add('translate-x-[150%]'), 3000);
-        }
-
-        window.renderGenres = function(songsArray) {
-            const grid = document.getElementById('genres-grid');
-            if (!grid) return;
-            grid.innerHTML = '';
-
-            // 1. Extraemos los géneros y quitamos los repetidos (Set)
-            const uniqueGenres = [...new Set(songsArray.map(song => song.genre))];
-
-            // 2. Diccionario de colores e íconos para que se vea bonito
-            const genreStyles = {
-                'Urbano': { color: 'from-purple-500 to-fuchsia-700', icon: 'radio' },
-              // Si hay un género nuevo, usará este diseño por defecto:
-            'Default': { color: 'from-zinc-600 to-zinc-800', icon: 'music' }
-             };
-
-            // 3. Dibujamos una tarjeta por cada género encontrado
-            uniqueGenres.forEach(genre => {
-               if (!genre) return; // Saltamos si alguna canción no tiene género
+    songsToRender.forEach((song) => {
+        const card = document.createElement('div');
+        card.className = "bg-zinc-900/40 p-4 rounded-xl hover:bg-zinc-800 transition-all cursor-pointer group relative";
+        card.onclick = () => window.playSong(song);
         
-               const style = genreStyles[genre] || genreStyles['Default'];
-        
-                const card = document.createElement('div');
-                card.className = `bg-gradient-to-br ${style.color} h-32 rounded-xl p-4 cursor-pointer hover:scale-[1.02] transition-transform relative overflow-hidden group`;
-                card.onclick = () => window.filterByGenre(genre);
-        
-                card.innerHTML = `
-                    <span class="text-xl font-bold">${genre}</span>
-                    <i data-lucide="${style.icon}" class="absolute -right-4 -bottom-4 w-20 h-20 opacity-20 group-hover:rotate-12 transition-transform"></i>
-                `;
-                grid.appendChild(card);
-            });
-            lucide.createIcons();
-        };
+        card.innerHTML = `
+            <div class="aspect-square bg-gradient-to-br ${song.color || 'from-zinc-700'} to-black rounded-lg mb-4 flex items-center justify-center relative overflow-hidden shadow-lg">
+                <i data-lucide="music" class="w-12 h-12 text-white/50 group-hover:scale-110 transition-transform"></i>
+                <button class="absolute bottom-2 right-2 w-10 h-10 bg-blue-500 text-white rounded-full shadow-xl flex items-center justify-center opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+                     <i data-lucide="play" fill="currentColor" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <h3 class="font-bold truncate text-sm">${song.title}</h3>
+            <p class="text-xs text-zinc-500 truncate mt-1">${Array.isArray(song.artists) ? song.artists.join(', ') : song.artist}</p>
+            <div class="mt-2 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                 <span class="text-[10px] text-zinc-600 uppercase font-bold">${song.genre}</span>
+                 <div class="flex items-center gap-3">
+                     <button onclick="event.stopPropagation(); window.checkPremiumAccess('add-playlist', '${song.id}')" class="text-zinc-500 hover:text-blue-500" title="Añadir a Playlist">
+                         <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                     </button>
+                     <button onclick="event.stopPropagation(); window.checkPremiumAccess('fav', '${song.id}')" class="text-zinc-500 hover:text-blue-500" title="Favoritos">
+                        <i data-lucide="heart" class="w-4 h-4 ${favs.find(f => f.id === song.id) ? 'fill-blue-500 text-blue-500' : ''}"></i>
+                     </button>
+                 </div>
+            </div>
+        `;
+        grid.appendChild(card);
+    });
+    lucide.createIcons();
+    
+    const totalSongsEl = document.getElementById('stat-total-songs');
+    if(totalSongsEl) totalSongsEl.innerText = window.songs ? window.songs.length : 0;
+};
 
-        // --- SECCIÓN DINÁMICA DE ARTISTAS ---
-        window.renderArtists = function(songsArray) {
-            const grid = document.getElementById('artists-grid');
-            if (!grid) return;
-            grid.innerHTML = '';
+window.renderGenres = function(songsArray) {
+    const grid = document.getElementById('genres-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    const uniqueGenres = [...new Set(songsArray.map(song => song.genre))];
+    const genreStyles = {
+        'Pop': { color: 'from-pink-500 to-rose-700', icon: 'disc' },
+        'Rock': { color: 'from-orange-500 to-red-700', icon: 'flame' },
+        'Jazz': { color: 'from-indigo-500 to-blue-800', icon: 'mic' },
+        'Lo-fi': { color: 'from-emerald-500 to-teal-800', icon: 'coffee' },
+        'Urbano': { color: 'from-purple-500 to-fuchsia-700', icon: 'radio' },
+        'Default': { color: 'from-zinc-600 to-zinc-800', icon: 'music' }
+    };
 
-            // 1. Extraer a todos los artistas (recordemos que a veces es un Array y a veces un Texto)
-            let allArtists = [];
-            songsArray.forEach(song => {
-                if (Array.isArray(song.artists)) {
-                    allArtists.push(...song.artists); // Si es un arreglo, los separamos
-                } else if (song.artist) {
-                    allArtists.push(song.artist); // Si es un texto, lo metemos directo
-                }
-            });
+    uniqueGenres.forEach(genre => {
+        if (!genre) return;
+        const style = genreStyles[genre] || genreStyles['Default'];
+        const card = document.createElement('div');
+        card.className = `bg-gradient-to-br ${style.color} h-32 rounded-xl p-4 cursor-pointer hover:scale-[1.02] transition-transform relative overflow-hidden group`;
+        card.onclick = () => window.filterByGenre(genre);
+        card.innerHTML = `
+            <span class="text-xl font-bold">${genre}</span>
+            <i data-lucide="${style.icon}" class="absolute -right-4 -bottom-4 w-20 h-20 opacity-20 group-hover:rotate-12 transition-transform"></i>
+        `;
+        grid.appendChild(card);
+    });
+    lucide.createIcons();
+};
 
-            // 2. Quitamos los nombres repetidos usando Set
-            const uniqueArtists = [...new Set(allArtists)];
+window.renderArtists = function(songsArray) {
+    const grid = document.getElementById('artists-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    let allArtists = [];
+    songsArray.forEach(song => {
+        if (Array.isArray(song.artists)) allArtists.push(...song.artists);
+        else if (song.artist) allArtists.push(song.artist);
+    });
+    const uniqueArtists = [...new Set(allArtists)];
 
-            // 3. Dibujamos el "Círculo" para cada artista
-            uniqueArtists.forEach(artist => {
-                if (!artist) return;
-                
-                const card = document.createElement('div');
-                card.className = "flex flex-col items-center gap-3 cursor-pointer group min-w-[100px]";
-                card.onclick = () => window.filterByArtist(artist);
-                
-                // Un pequeño truco para darle un color distinto a cada artista según su nombre
-                const colors = ['bg-blue-500', 'bg-pink-500', 'bg-blue-500', 'bg-purple-500', 'bg-orange-500', 'bg-rose-500'];
-                const randomColor = colors[artist.length % colors.length];
+    uniqueArtists.forEach(artist => {
+        if (!artist) return;
+        const card = document.createElement('div');
+        card.className = "flex flex-col items-center gap-3 cursor-pointer group min-w-[100px]";
+        card.onclick = () => window.filterByArtist(artist);
+        const colors = ['bg-emerald-500', 'bg-pink-500', 'bg-blue-500', 'bg-purple-500', 'bg-orange-500', 'bg-rose-500'];
+        const randomColor = colors[artist.length % colors.length];
 
-                card.innerHTML = `
-                    <div class="w-24 h-24 ${randomColor} rounded-full flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform overflow-hidden relative">
-                        <i data-lucide="user" class="w-10 h-10 text-white/50 relative z-10"></i>
-                        <div class="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors z-20"></div>
-                    </div>
-                    <span class="text-sm font-semibold text-center truncate w-full group-hover:text-blue-500 transition-colors">${artist}</span>
-                `;
-                grid.appendChild(card);
-            });
-            lucide.createIcons();
-        };
+        card.innerHTML = `
+            <div class="w-24 h-24 ${randomColor} rounded-full flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform overflow-hidden relative">
+                <i data-lucide="user" class="w-10 h-10 text-white/50 relative z-10"></i>
+                <div class="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors z-20"></div>
+            </div>
+            <span class="text-sm font-semibold text-center truncate w-full group-hover:text-blue-500 transition-colors">${artist}</span>
+        `;
+        grid.appendChild(card);
+    });
+    lucide.createIcons();
+};
 
-        // Filtro al hacer clic en un artista
-        window.filterByArtist = function(artistName) {
-            const res = window.songs.filter(s => {
-                if (Array.isArray(s.artists)) return s.artists.includes(artistName);
-                return s.artist === artistName;
-            });
-            document.getElementById('list-title').innerText = `Artista: ${artistName}`;
-            window.renderSongs(res);
-            window.currentPlaylist = res;
-        };
+// --- 3. BÚSQUEDA Y FILTROS ---
+window.handleSearch = function(q) {
+    if (!q.trim()) { window.renderSongs(window.songs); return; }
+    const res = window.songs.filter(s => {
+        const tituloMatch = s.title.toLowerCase().includes(q.toLowerCase());
+        const artistasTexto = Array.isArray(s.artists) ? s.artists.join(', ') : (s.artist || '');
+        const artistaMatch = artistasTexto.toLowerCase().includes(q.toLowerCase());
+        return tituloMatch || artistaMatch;
+    });
+    document.getElementById('list-title').innerText = `Resultados para "${q}"`;
+    window.renderSongs(res);
+};
+
+window.filterByGenre = function(g) {
+    const res = window.songs.filter(s => s.genre === g);
+    document.getElementById('list-title').innerText = `Género: ${g}`;
+    window.renderSongs(res);
+    window.currentPlaylist = res;
+};
+
+window.filterByArtist = function(artistName) {
+    const res = window.songs.filter(s => {
+        if (Array.isArray(s.artists)) return s.artists.includes(artistName);
+        return s.artist === artistName;
+    });
+    document.getElementById('list-title').innerText = `Artista: ${artistName}`;
+    window.renderSongs(res);
+    window.currentPlaylist = res;
+};
+
+// --- 4. MODALES DE PAGO Y NOTIFICACIONES ---
+window.openPremiumModal = () => {
+    if (!window.currentUser) { window.showNotification("Crea una cuenta o inicia sesión primero"); return; }
+    if (window.userData && (window.userData.role === 'admin' || window.userData.plan === 'premium')) {
+        window.showNotification("¡Tu cuenta ya es Premium! 👑"); return;
+    }
+    document.getElementById('modal-premium-upgrade').classList.remove('hidden');
+    lucide.createIcons();
+};
+
+window.closePremiumModal = () => { document.getElementById('modal-premium-upgrade').classList.add('hidden'); };
+
+window.sendVoucher = () => {
+    const numeroWhatsApp = "18090000000"; 
+    const correoUsuario = window.currentUser ? window.currentUser.email : "mi correo";
+    const mensaje = `Hola LorHels Music 🎵,%0A%0AQuiero activar mi cuenta Premium.%0AMi correo de registro es: *${correoUsuario}*%0A%0AAdjunto mi comprobante de pago:`;
+    window.open(`https://wa.me/${numeroWhatsApp}?text=${mensaje}`, '_blank');
+    window.closePremiumModal();
+};
+
+window.showNotification = function(t) {
+    const n = document.getElementById('notification');
+    document.getElementById('notification-text').innerText = t;
+    n.classList.remove('translate-x-[150%]');
+    setTimeout(() => n.classList.add('translate-x-[150%]'), 3000);
+};
+
+// --- 5. AUDIO HELPERS (REPRODUCTOR) ---
+window.playSong = function(song) {
+    const index = window.currentPlaylist.findIndex(s => s.id === song.id);
+    if (index !== -1) window.currentSongIndex = index;
+
+    audio.src = song.src || song.url; 
+    audio.play();
+    window.isPlaying = true;
+
+    document.getElementById('player-title').innerText = song.title;
+    const nombreArtista = Array.isArray(song.artists) ? song.artists.join(', ') : song.artist;
+    document.getElementById('player-artist').innerText = nombreArtista;
+    document.getElementById('player-img').className = `w-14 h-14 bg-gradient-to-br ${song.color || 'from-zinc-700'} to-black rounded-md flex items-center justify-center`;
+    document.getElementById('total-time').innerText = song.duration ? window.formatTime(song.duration) : "-:--";
+
+    window.updatePlayBtn();
+    if(window.updateFavBtnUI) window.updateFavBtnUI(song.id);
+};
+
+window.togglePlay = function() {
+    if (window.currentSongIndex === -1 && window.currentPlaylist && window.currentPlaylist.length > 0) { 
+        window.playSong(window.currentPlaylist[0]); return; 
+    }
+    if (window.currentSongIndex === -1) return;
+
+    window.isPlaying ? audio.pause() : audio.play();
+    window.isPlaying = !window.isPlaying;
+    window.updatePlayBtn();
+};
+
+window.updatePlayBtn = function() {
+    const playBtnEl = document.getElementById('play-btn');
+    playBtnEl.innerHTML = window.isPlaying ? '<i data-lucide="pause" fill="currentColor"></i>' : '<i data-lucide="play" fill="currentColor"></i>';
+    lucide.createIcons();
+};
+
+window.nextSong = function() {
+    if (!window.currentPlaylist || window.currentPlaylist.length === 0) return;
+    window.currentSongIndex = window.isShuffle 
+        ? Math.floor(Math.random() * window.currentPlaylist.length) 
+        : (window.currentSongIndex + 1) % window.currentPlaylist.length;
+    window.playSong(window.currentPlaylist[window.currentSongIndex]);
+};
+
+window.prevSong = function() {
+    if (!window.currentPlaylist || window.currentPlaylist.length === 0) return;
+    window.currentSongIndex = (window.currentSongIndex - 1 + window.currentPlaylist.length) % window.currentPlaylist.length;
+    window.playSong(window.currentPlaylist[window.currentSongIndex]);
+};
+
+window.toggleShuffle = function() { 
+    window.isShuffle = !window.isShuffle; 
+    const btn = document.getElementById('shuffle-btn');
+    btn.classList.toggle('text-blue-500'); 
+    btn.classList.toggle('text-zinc-500');
+    window.showNotification(window.isShuffle ? "Modo Aleatorio: Activado 🔀" : "Modo Aleatorio: Desactivado");
+};
+
+window.toggleRepeat = function() { 
+    window.repeatMode = (window.repeatMode + 1) % 3; 
+    const btn = document.getElementById('repeat-btn');
+    if (window.repeatMode === 0) {
+        btn.className = "text-zinc-500 hover:text-white";
+        btn.innerHTML = '<i data-lucide="repeat" class="w-4 h-4"></i>';
+        window.showNotification("Repetir: Desactivado ➡️");
+    } else if (window.repeatMode === 1) {
+        btn.className = "text-blue-500 hover:text-blue-400";
+        btn.innerHTML = '<i data-lucide="repeat" class="w-4 h-4"></i>';
+        window.showNotification("Repetir: Toda la lista 🔁");
+    } else if (window.repeatMode === 2) {
+        btn.className = "text-blue-500 hover:text-blue-400";
+        btn.innerHTML = '<i data-lucide="repeat-1" class="w-4 h-4"></i>';
+        window.showNotification("Repetir: Esta canción 🔂");
+    }
+    lucide.createIcons();
+};
+
+audio.ontimeupdate = () => {
+    const p = (audio.currentTime / audio.duration) * 100;
+    progressBar.value = p || 0;
+    document.getElementById('current-time').innerText = window.formatTime(audio.currentTime);
+};
+
+progressBar.oninput = () => audio.currentTime = (progressBar.value / 100) * audio.duration;
+volSlider.oninput = () => audio.volume = volSlider.value;
+
+audio.onended = () => {
+    if (window.repeatMode === 2) {
+        audio.currentTime = 0;
+        audio.play();
+    } else if (window.repeatMode === 0 && !window.isShuffle && window.currentSongIndex === window.currentPlaylist.length - 1) {
+        window.isPlaying = false;
+        window.updatePlayBtn();
+    } else {
+        window.nextSong();
+    }
+};
+
+window.formatTime = function(s) {
+    if (isNaN(s)) return "0:00";
+    const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+};
+
+window.updateFavBtnUI = function(songId) {
+    const btn = document.getElementById('player-fav-btn');
+    const favs = window.favorites || [];
+    const isFav = favs.some(f => f.id === songId);
+    btn.innerHTML = `<i data-lucide="heart" class="w-5 h-5 ${isFav ? 'fill-blue-500 text-blue-500' : ''}"></i>`;
+    lucide.createIcons();
+};
+
+window.toggleFavoriteCurrent = function() {
+    if(window.currentSongIndex === -1) return;
+    const currentSong = window.currentPlaylist[window.currentSongIndex];
+    if(currentSong) { window.checkPremiumAccess('fav', currentSong.id); }
+};
     </script>
 
     <script type="module">
     // 1. IMPORTACIONES
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-    import { getFirestore, collection, getDocs, doc, setDoc, getDoc, addDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+    import { getFirestore, collection, getDocs, doc, setDoc, getDoc, addDoc, deleteDoc, updateDoc, arrayUnion, query, where } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
     import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
     const firebaseConfig = {
@@ -713,11 +668,24 @@
             querySnapshot.forEach((doc) => { window.songs.push({ id: doc.id, ...doc.data() }); });
             window.currentPlaylist = [...window.songs];
             
-            // Dibuja las canciones
             window.renderSongs(window.songs); 
-            // Dibuja los géneros dinámicamente basados en las canciones
-            window.renderGenres(window.songs);
-            window.renderArtists(window.songs);
+            window.renderGenres(window.songs); 
+            if(window.renderArtists) window.renderArtists(window.songs);
+
+            // --- NUEVO: DETECTAR SI ALGUIEN ENTRÓ POR UN ENLACE COMPARTIDO ---
+            const urlParams = new URLSearchParams(window.location.search);
+            const sharedPlaylistId = urlParams.get('playlist');
+            
+            if (sharedPlaylistId) {
+                // Buscamos si la playlist es pública
+                const pSnap = await getDoc(doc(db, "playlists", sharedPlaylistId));
+                if (pSnap.exists() && pSnap.data().isPublic) {
+                    window.openPlaylist(sharedPlaylistId);
+                    window.showNotification("Has abierto una playlist compartida 🎧");
+                } else {
+                    window.showNotification("Esta playlist es privada o no existe 🔒");
+                }
+            }
             
         } catch (error) { console.error("Error al cargar canciones:", error); }
     };
@@ -775,10 +743,29 @@
 
             // BUSCAMOS EL ROL DEL USUARIO Y SUS FAVORITOS EN LA BD
             try {
-                const userDoc = await getDoc(doc(db, "users", user.uid));
+                const userRef = doc(db, "users", user.uid);
+                const userDoc = await getDoc(userRef);
+                
                 if (userDoc.exists()) {
                     window.userData = userDoc.data();
-                    // Cargamos los favoritos guardados en la BD (o un arreglo vacío si no tiene)
+                    
+                    // --- SISTEMA DE CADUCIDAD PREMIUM ---
+                    if (window.userData.plan === "premium" && window.userData.premiumUntil) {
+                        const fechaExpiracion = new Date(window.userData.premiumUntil);
+                        const hoy = new Date();
+                        
+                        if (hoy > fechaExpiracion) {
+                            // ¡El tiempo se acabó! Lo regresamos a básico en la BD
+                            await updateDoc(userRef, { 
+                                plan: "basic", 
+                                premiumUntil: null 
+                            });
+                            window.userData.plan = "basic"; // Lo actualizamos localmente
+                            window.showNotification("Tu mes Premium ha finalizado. 😢");
+                        }
+                    }
+                    // ------------------------------------
+
                     window.favorites = window.userData.favorites || []; 
                     
                     if (window.userData.role === "admin") {
@@ -789,7 +776,6 @@
                         window.showNotification("¡Bienvenido de vuelta!");
                     }
 
-                    // Redibujamos las canciones para que los corazones se pinten si ya eran favoritos
                     if(window.currentPlaylist.length > 0) window.renderSongs(window.currentPlaylist);
                 }
             } catch (err) { console.error("Error al buscar rol:", err); }
@@ -857,41 +843,61 @@
                 lucide.createIcons();
             };
 
+            // 5. ABRIR VENTANA PARA SUBIR MÚSICA DIRECTAMENTE (Sin petición)
+    window.openDirectAddSongModal = () => {
+        document.getElementById('modal-req-id').value = ""; // Lo dejamos vacío a propósito
+        document.getElementById('modal-title').value = "";
+        document.getElementById('modal-artists').value = "";
+        document.getElementById('modal-genre').value = "";
+        document.getElementById('modal-src').value = ""; 
+        document.getElementById('modal-duration').value = "0"; 
+
+        document.getElementById('admin-add-song-modal').classList.remove('hidden');
+        lucide.createIcons();
+    };
+
             window.closeAddSongModal = () => { document.getElementById('admin-add-song-modal').classList.add('hidden'); };
 
-            document.getElementById('admin-add-song-form').addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const btn = e.target.querySelector('button[type="submit"]');
-                btn.innerText = "Guardando...";
-                btn.disabled = true;
+            // 3. ENVIAR FORMULARIO Y GUARDAR EN BD (Actualizado para subidas directas)
+    document.getElementById('admin-add-song-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector('button[type="submit"]');
+        btn.innerText = "Guardando...";
+        btn.disabled = true;
 
-                const reqId = document.getElementById('modal-req-id').value;
-                const artistasTexto = document.getElementById('modal-artists').value;
-                const arregloArtistas = artistasTexto.split(',').map(a => a.trim());
+        const reqId = document.getElementById('modal-req-id').value;
+        const artistasTexto = document.getElementById('modal-artists').value;
+        const arregloArtistas = artistasTexto.split(',').map(a => a.trim());
 
-                const nuevaCancionOficial = {
-                    title: document.getElementById('modal-title').value,
-                    artists: arregloArtistas,
-                    genre: document.getElementById('modal-genre').value,
-                    src: document.getElementById('modal-src').value,
-                    duration: Number(document.getElementById('modal-duration').value) || 0
-                };
+        const nuevaCancionOficial = {
+            title: document.getElementById('modal-title').value,
+            artists: arregloArtistas,
+            genre: document.getElementById('modal-genre').value,
+            src: document.getElementById('modal-src').value,
+            duration: Number(document.getElementById('modal-duration').value) || 0
+        };
 
-                try {
-                    await addDoc(collection(db, "songs"), nuevaCancionOficial);
-                    await deleteDoc(doc(db, "requests", reqId));
-                    window.showNotification("¡Canción publicada con éxito!");
-                    window.closeAddSongModal();
-                    await window.cargarCanciones();
-                    await window.cargarPeticiones(); 
-                } catch (error) {
-                    console.error("Error al guardar:", error);
-                    window.showNotification("Hubo un error al guardar en Firebase");
-                } finally {
-                    btn.innerText = "Guardar Canción Oficial";
-                    btn.disabled = false;
-                }
-            });
+        try {
+            // PASO A: Guardamos la nueva canción siempre
+            await addDoc(collection(db, "songs"), nuevaCancionOficial);
+            
+            // PASO B: Si venía de una petición (reqId tiene texto), borramos la petición
+            if (reqId !== "") {
+                await deleteDoc(doc(db, "requests", reqId));
+            }
+
+            window.showNotification("¡Canción publicada con éxito! 🎶");
+            window.closeAddSongModal();
+            await window.cargarCanciones();
+            await window.cargarPeticiones(); 
+        } catch (error) {
+            console.error("Error al guardar:", error);
+            window.showNotification("Hubo un error al guardar en Firebase");
+        } finally {
+            btn.innerText = "Guardar Canción Oficial";
+            btn.disabled = false;
+        }
+    });
 
             window.rejectRequest = async (id) => {
                 if(!confirm("¿Estás seguro de eliminar esta petición?")) return;
@@ -905,25 +911,21 @@
             // --- LÓGICA DE FAVORITOS Y PREMIUM (CONECTADA A BD) ---
 
             window.checkPremiumAccess = (action, songId) => {
-                // 1. Si no hay sesión, no puede hacer nada
-                if (!window.currentUser || !window.userData) {
-                    window.showNotification("Debes iniciar sesión primero");
-                    return;
-                }
+        if (!window.currentUser || !window.userData) {
+            window.showNotification("Debes iniciar sesión primero");
+            return;
+        }
+        const rol = window.userData.role;
+        const plan = window.userData.plan;
 
-                // 2. Verificamos el rol o plan en la Base de Datos
-                const rol = window.userData.role;
-                const plan = window.userData.plan;
-
-                if (rol !== 'admin' && plan !== 'premium') {
-                    // Si es basic, mostramos el muro de pago
-                    window.changeView('premium-wall');
-                } else {
-                    // Si es admin o premium, le damos permiso
-                    if (action === 'library') window.showLibrary();
-                    if (action === 'fav') window.toggleFavorite(songId);
-                }
-            };
+        if (rol !== 'admin' && plan !== 'premium') {
+            window.changeView('premium-wall');
+        } else {
+            if (action === 'library') window.showLibrary();
+            if (action === 'fav') window.toggleFavorite(songId);
+            if (action === 'add-playlist') window.openAddToPlaylistModal(songId); // NUEVO
+        }
+    };
 
             window.toggleFavorite = async (id) => {
                 // Aseguramos que la lista exista
@@ -967,18 +969,274 @@
                 if (window.updateFavBtnUI) window.updateFavBtnUI(id);
             };
 
-            window.showLibrary = () => {
-                 window.changeView('home');
-                document.getElementById('nav-library').classList.add('active-link', 'text-white');
-                document.getElementById('nav-home').classList.remove('active-link', 'text-white');
-                document.getElementById('list-title').innerText = "Tu Biblioteca";
-        
-                window.renderSongs(window.favorites);
-        
-                if(window.favorites.length === 0) {
-                    document.getElementById('songs-grid').innerHTML = '<div class="col-span-full py-20 text-center text-zinc-500">Aún no tienes canciones favoritas.</div>';
+            // 5. MOSTRAR LA BIBLIOTECA (Playlists + Favoritos)
+    window.showLibrary = async () => {
+        window.changeView('home');
+        document.getElementById('nav-library').classList.add('active-link', 'text-white');
+        document.getElementById('nav-home').classList.remove('active-link', 'text-white');
+        document.getElementById('list-title').innerText = "Cargando biblioteca...";
+
+        const grid = document.getElementById('songs-grid');
+        grid.innerHTML = '<div class="col-span-full py-10 text-center text-zinc-500"><i data-lucide="loader" class="w-8 h-8 animate-spin mx-auto mb-2 text-blue-500"></i></div>';
+        lucide.createIcons();
+
+        try {
+            // A. Buscamos tus playlists
+            const q = query(collection(db, "playlists"), where("ownerId", "==", window.currentUser.uid));
+            const querySnapshot = await getDocs(q);
+            const misPlaylists = [];
+            querySnapshot.forEach((doc) => { misPlaylists.push({ id: doc.id, ...doc.data() }); });
+
+            grid.innerHTML = ''; // Limpiamos la rueca de carga
+            document.getElementById('list-title').innerText = "Tu Biblioteca";
+
+            // B. Dibujamos las Playlists
+            if (misPlaylists.length > 0) {
+                const plTitle = document.createElement('h3');
+                plTitle.className = "col-span-full text-lg font-bold mt-2 mb-2 flex items-center gap-2 text-blue-500";
+                plTitle.innerHTML = '<i data-lucide="list-music"></i> Mis Playlists';
+                grid.appendChild(plTitle);
+
+                misPlaylists.forEach(pl => {
+                    const card = document.createElement('div');
+                    card.className = "bg-zinc-900/40 p-4 rounded-xl hover:bg-zinc-800 transition-all cursor-pointer group";
+                    card.onclick = () => window.openPlaylist(pl.id);
+                    
+                    const isPublicIcon = pl.isPublic ? 'globe' : 'lock';
+                    
+                    card.innerHTML = `
+                        <div class="aspect-square bg-gradient-to-br from-blue-600 to-zinc-900 rounded-lg mb-4 flex items-center justify-center shadow-lg overflow-hidden">
+                            <i data-lucide="list-music" class="w-12 h-12 text-white/50 group-hover:scale-110 transition-transform"></i>
+                        </div>
+                        <h3 class="font-bold truncate text-sm">${pl.name}</h3>
+                        <div class="mt-1 flex items-center gap-2 text-xs text-zinc-500">
+                            <i data-lucide="${isPublicIcon}" class="w-3 h-3"></i>
+                            <span>${pl.songs ? pl.songs.length : 0} canciones</span>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+            }
+
+            // C. Dibujamos los Favoritos
+            const favTitle = document.createElement('h3');
+            favTitle.className = "col-span-full text-lg font-bold mt-8 mb-2 flex items-center gap-2 text-blue-500";
+            favTitle.innerHTML = '<i data-lucide="heart"></i> Canciones Favoritas';
+            grid.appendChild(favTitle);
+
+            if (window.favorites.length === 0) {
+                const emptyFavs = document.createElement('div');
+                emptyFavs.className = "col-span-full pb-10 pt-4 text-center text-zinc-500 text-sm italic";
+                emptyFavs.innerText = "Aún no tienes canciones favoritas.";
+                grid.appendChild(emptyFavs);
+            } else {
+                // Dibujamos las canciones, pasando 'true' para que se apilen debajo de las playlists
+                window.renderSongs(window.favorites, true); 
+            }
+            lucide.createIcons();
+
+        } catch (error) {
+            console.error("Error al cargar biblioteca:", error);
+            grid.innerHTML = '<div class="col-span-full py-10 text-center text-red-500">Error al cargar playlists.</div>';
+        }
+    };
+
+    // 6. ABRIR UNA PLAYLIST ESPECÍFICA
+    window.openPlaylist = async (playlistId) => {
+        document.getElementById('songs-grid').innerHTML = '<div class="col-span-full py-10 text-center text-zinc-500">Cargando playlist...</div>';
+        try {
+            const docSnap = await getDoc(doc(db, "playlists", playlistId));
+            if (docSnap.exists()) {
+                const pl = docSnap.data();
+                
+                // Filtramos las canciones que pertenecen a esta playlist
+                const plSongs = window.songs.filter(s => pl.songs && pl.songs.includes(s.id));
+                window.currentPlaylist = plSongs; // La volvemos la cola de reproducción actual
+
+                // Creamos el botón de compartir si es pública
+                const shareBtn = pl.isPublic 
+                    ? `<button onclick="window.sharePlaylist('${playlistId}')" class="text-xs bg-blue-500 text-white px-3 py-1.5 rounded-full font-bold hover:bg-blue-400 transition-colors flex items-center gap-2 shadow-[0_0_10px_rgba(59,130,246,0.5)]"><i data-lucide="share-2" class="w-3 h-3"></i> Compartir</button>` 
+                    : `<span class="text-xs bg-zinc-800 text-zinc-400 px-3 py-1.5 rounded-full flex items-center gap-2"><i data-lucide="lock" class="w-3 h-3"></i> Privada</span>`;
+
+                document.getElementById('list-title').innerHTML = `
+                    <div class="flex items-center gap-4">
+                        <span>${pl.name}</span>
+                        ${shareBtn}
+                    </div>
+                `;
+
+                window.renderSongs(plSongs);
+                if(plSongs.length === 0) {
+                    document.getElementById('songs-grid').innerHTML = '<div class="col-span-full py-10 text-center text-zinc-500 italic">Esta playlist está vacía. Añade canciones desde el inicio.</div>';
                 }
-            };
+            } else {
+                window.showNotification("La playlist no existe o fue eliminada.");
+                window.showLibrary();
+            }
+        } catch(e) { console.error(e); }
+    };
+
+    // 7. COPIAR ENLACE AL PORTAPAPELES
+    window.sharePlaylist = (id) => {
+        // Creamos la URL actual + un parámetro de búsqueda
+        const url = window.location.origin + window.location.pathname + "?playlist=" + id;
+        
+        navigator.clipboard.writeText(url).then(() => {
+            window.showNotification("¡Enlace copiado al portapapeles! 🔗");
+        }).catch(err => {
+            console.error("Error al copiar: ", err);
+            window.showNotification("Error al copiar enlace");
+        });
+    };
+
+            // --- LÓGICA DE PLAYLISTS PERSONALIZADAS ---
+    window.userPlaylists = []; // Guardará las playlists del usuario
+
+    // 1. ABRIR/CERRAR MODALES
+    window.openCreatePlaylistModal = () => { document.getElementById('modal-create-playlist').classList.remove('hidden'); };
+    window.closePlaylistModal = () => { document.getElementById('modal-create-playlist').classList.add('hidden'); };
+    window.closeAddToPlaylistModal = () => { document.getElementById('modal-add-to-playlist').classList.add('hidden'); };
+
+    // 2. ABRIR MODAL PARA AÑADIR CANCIÓN Y CARGAR TUS PLAYLISTS
+    window.openAddToPlaylistModal = async (songId) => {
+        document.getElementById('add-song-id-hidden').value = songId;
+        document.getElementById('modal-add-to-playlist').classList.remove('hidden');
+        
+        const listDiv = document.getElementById('user-playlists-list');
+        listDiv.innerHTML = '<p class="text-sm text-zinc-500 text-center py-4">Cargando tus playlists...</p>';
+
+        try {
+            // Buscamos las playlists que te pertenecen en Firestore
+            const q = query(collection(db, "playlists"), where("ownerId", "==", window.currentUser.uid));
+            const querySnapshot = await getDocs(q);
+            window.userPlaylists = [];
+            querySnapshot.forEach((doc) => { window.userPlaylists.push({ id: doc.id, ...doc.data() }); });
+
+            if (window.userPlaylists.length === 0) {
+                listDiv.innerHTML = '<p class="text-sm text-zinc-500 text-center py-4">No tienes playlists creadas.</p>';
+            } else {
+                listDiv.innerHTML = '';
+                window.userPlaylists.forEach(pl => {
+                    const btn = document.createElement('button');
+                    btn.className = "w-full text-left p-3 rounded-lg hover:bg-zinc-800 transition-colors flex items-center justify-between group";
+                    btn.onclick = () => window.addSongToSpecificPlaylist(pl.id, songId);
+                    
+                    const isPublicIcon = pl.isPublic ? '<i data-lucide="globe" class="w-4 h-4 text-zinc-500"></i>' : '<i data-lucide="lock" class="w-4 h-4 text-zinc-500"></i>';
+                    
+                    btn.innerHTML = `
+                        <div>
+                            <p class="text-sm font-bold text-white group-hover:text-blue-500 transition-colors">${pl.name}</p>
+                            <p class="text-[10px] text-zinc-500">${pl.songs ? pl.songs.length : 0} canciones</p>
+                        </div>
+                        ${isPublicIcon}
+                    `;
+                    listDiv.appendChild(btn);
+                });
+                lucide.createIcons();
+            }
+        } catch (error) {
+            console.error("Error al cargar playlists:", error);
+            listDiv.innerHTML = '<p class="text-sm text-red-500 text-center py-4">Error al cargar.</p>';
+        }
+    };
+
+    // 3. CREAR UNA NUEVA PLAYLIST EN LA BD
+    document.getElementById('create-playlist-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector('button[type="submit"]');
+        btn.innerText = "Creando..."; btn.disabled = true;
+
+        const name = document.getElementById('new-playlist-name').value;
+        const isPublic = document.getElementById('new-playlist-public').checked;
+
+        const nuevaPlaylist = {
+            name: name,
+            isPublic: isPublic,
+            ownerId: window.currentUser.uid,
+            ownerName: window.userData.displayName || window.currentUser.email.split('@')[0],
+            songs: [], // Empieza vacía
+            createdAt: new Date().toISOString()
+        };
+
+        try {
+            await addDoc(collection(db, "playlists"), nuevaPlaylist);
+            window.showNotification("Playlist creada con éxito 🎉");
+            e.target.reset();
+            window.closePlaylistModal();
+            
+            // Si estaba abierto el modal de añadir canción, lo recargamos
+            if (!document.getElementById('modal-add-to-playlist').classList.contains('hidden')) {
+                const songId = document.getElementById('add-song-id-hidden').value;
+                window.openAddToPlaylistModal(songId);
+            }
+        } catch (error) {
+            console.error("Error al crear playlist:", error);
+            window.showNotification("Hubo un error al crearla.");
+        } finally {
+            btn.innerText = "Crear Playlist"; btn.disabled = false;
+        }
+    });
+
+    // 4. GUARDAR CANCIÓN DENTRO DE LA PLAYLIST
+    window.addSongToSpecificPlaylist = async (playlistId, songId) => {
+        try {
+            const playlistRef = doc(db, "playlists", playlistId);
+            // arrayUnion agrega la canción sin duplicarla si ya existe
+            await updateDoc(playlistRef, {
+                songs: arrayUnion(songId)
+            });
+            window.showNotification("Canción añadida a tu playlist 🎵");
+            window.closeAddToPlaylistModal();
+        } catch (error) {
+            console.error("Error al añadir a playlist:", error);
+            window.showNotification("Error al guardar la canción.");
+        }
+    };
+
+    // --- LÓGICA PARA OTORGAR PREMIUM (ADMIN) ---
+    window.grantPremium = async () => {
+        const emailInput = document.getElementById('admin-upgrade-email').value.toLowerCase().trim();
+        if(!emailInput) {
+            window.showNotification("Escribe un correo válido");
+            return;
+        }
+
+        const btn = event.currentTarget;
+        const textoOriginal = btn.innerHTML;
+        btn.innerHTML = '<i data-lucide="loader" class="w-4 h-4 animate-spin"></i> Buscando...';
+        btn.disabled = true;
+
+        try {
+            // 1. Buscamos al usuario por su correo
+            const q = query(collection(db, "users"), where("email", "==", emailInput));
+            const querySnapshot = await getDocs(q);
+
+            if(querySnapshot.empty) {
+                window.showNotification("No se encontró ninguna cuenta con ese correo.");
+            } else {
+                // 2. Si lo encontramos, calculamos la fecha exacta dentro de 1 mes
+                const userDoc = querySnapshot.docs[0];
+                const fechaVencimiento = new Date();
+                fechaVencimiento.setMonth(fechaVencimiento.getMonth() + 1); // Suma 1 mes
+
+                // 3. Actualizamos su ficha en la base de datos
+                await updateDoc(doc(db, "users", userDoc.id), {
+                    plan: "premium",
+                    premiumUntil: fechaVencimiento.toISOString()
+                });
+
+                window.showNotification(`¡Premium activado! Vence el: ${fechaVencimiento.toLocaleDateString()}`);
+                document.getElementById('admin-upgrade-email').value = ''; // Limpiamos
+            }
+        } catch(error) {
+            console.error("Error al dar Premium:", error);
+            window.showNotification("Hubo un error al procesar.");
+        } finally {
+            btn.innerHTML = textoOriginal;
+            btn.disabled = false;
+            lucide.createIcons();
+        }
+    };
 
             // --- EJECUCIÓN INICIAL ---
             cargarCanciones();
@@ -1022,5 +1280,77 @@
                 </form>
             </div>
         </div>
+
+        <div id="modal-create-playlist" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl admin-glow">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold flex items-center gap-2"><i data-lucide="list-music" class="text-blue-500"></i> Nueva Playlist</h3>
+                <button onclick="closePlaylistModal()" class="text-zinc-500 hover:text-white transition-colors">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <form id="create-playlist-form" class="space-y-4">
+                <div>
+                   <label class="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Nombre</label>
+                   <input type="text" id="new-playlist-name" required placeholder="Ej: Viaje en carretera" class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors">
+                </div>
+                <div class="flex items-center gap-2 mt-2">
+                    <input type="checkbox" id="new-playlist-public" class="w-4 h-4 accent-blue-500 cursor-pointer">
+                    <label for="new-playlist-public" class="text-sm text-zinc-300 cursor-pointer">Hacer pública (Cualquiera con el link podrá verla)</label>
+                </div>
+                <button type="submit" class="w-full bg-blue-500 text-white py-3 rounded-lg font-bold hover:bg-blue-400 transition-colors mt-4">
+                    Crear Playlist
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div id="modal-add-to-playlist" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl admin-glow">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-bold">Añadir a...</h3>
+            <button onclick="closeAddToPlaylistModal()" class="text-zinc-500 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        <input type="hidden" id="add-song-id-hidden"> <div id="user-playlists-list" class="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
+            <p class="text-sm text-zinc-500 text-center py-4">Cargando...</p>
+        </div>
+        <button onclick="closeAddToPlaylistModal(); openCreatePlaylistModal()" class="w-full mt-4 border border-blue-500 text-blue-500 py-2 rounded-lg text-sm font-bold hover:bg-blue-500/10 transition-colors">
+            + Crear nueva
+        </button>
+    </div>
+</div>
+
+<div id="modal-premium-upgrade" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-zinc-950 border border-blue-500/50 rounded-2xl p-6 w-full max-w-md shadow-[0_0_20px_rgba(59,130,246,0.1)] text-center relative overflow-hidden">
+        <div class="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32 bg-blue-500/20 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="w-16 h-16 bg-blue-500/10 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-4 relative z-10">
+            <i data-lucide="crown" class="w-8 h-8"></i>
+        </div>
+        
+        <h3 class="text-2xl font-bold mb-2 text-white relative z-10">¡Pásate a Premium!</h3>
+        <p class="text-zinc-400 text-sm mb-6 relative z-10">Disfruta de playlists personalizadas y guarda tus favoritos sin límites.</p>
+        
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 text-left mb-6 space-y-2 relative z-10">
+            <p class="text-[10px] text-zinc-500 uppercase font-bold tracking-wider mb-2">Instrucciones de Pago</p>
+            <p class="text-sm font-semibold text-white">Banco: <span class="text-blue-400 font-normal">Banco BHD</span></p>
+            <p class="text-sm font-semibold text-white">Cuenta: <span class="text-blue-400 font-normal">30912740013</span></p>
+            <p class="text-sm font-semibold text-white">A nombre de: <span class="text-blue-400 font-normal">Pool Handhels P. Valera</span></p>
+            <p class="text-sm font-semibold text-white mt-2 border-t border-zinc-800 pt-2">Monto: <span class="text-blue-500 font-bold">RD$ 200 / mes</span></p>
+        </div>
+
+        <p class="text-xs text-zinc-500 mb-6 relative z-10">Realiza la transferencia y envíanos la foto del comprobante junto con el correo de tu cuenta.</p>
+
+        <div class="flex gap-3 relative z-10">
+            <button onclick="closePremiumModal()" class="flex-1 border border-zinc-700 text-zinc-300 py-3 rounded-lg font-bold hover:bg-zinc-800 transition-colors text-sm">
+                Cancelar
+            </button>
+            <button onclick="sendVoucher()" class="flex-[2] bg-blue-500 text-white py-3 rounded-lg font-bold hover:bg-blue-400 transition-colors flex items-center justify-center gap-2 text-sm shadow-lg shadow-blue-500/25">
+                <i data-lucide="smartphone" class="w-4 h-4"></i> Enviar Comprobante
+            </button>
+        </div>
+    </div>
+</div>
     </body>
 </html>
