@@ -797,235 +797,230 @@
         } else {
             loggedOutView.classList.remove('hidden');
             loggedInView.classList.add('hidden');
-            adminNav.classList.add('hidden');
-            window.currentUser = null;
-        }
-    });
-
-    // --- LÓGICA DE SOLICITUDES (Peticiones de usuarios) ---
-    window.handleRequestSubmit = async (e) => {
-        e.preventDefault(); 
-        const btn = e.target.querySelector('button[type="submit"]');
-        const textoOriginal = btn.innerHTML;
-        btn.innerText = "Enviando...";
-        btn.disabled = true;
-
-        const nuevaPeticion = {
-            title: document.getElementById('req-title').value,
-            artist: document.getElementById('req-artist').value,
-            genre: document.getElementById('req-genre').value,
-            status: 'pending',
-            fecha: new Date().toISOString()
-        };
-
-        try {
-            await addDoc(collection(db, "requests"), nuevaPeticion);
-            window.showNotification("¡Solicitud enviada con éxito!");
-            e.target.reset(); 
-            window.changeView('home'); 
-            await window.cargarPeticiones(); 
-        } catch (error) {
-            console.error("Error al enviar la solicitud:", error);
-            window.showNotification("Hubo un error al enviar.");
-        } finally {
-            btn.innerHTML = textoOriginal;
-            btn.disabled = false;
-            lucide.createIcons();
-        }
-    };
-
-    window.cargarPeticiones = async () => {
-        try {
-            const querySnapshot = await getDocs(collection(db, "requests"));
-            window.pendingRequests = []; 
-            querySnapshot.forEach((doc) => { window.pendingRequests.push({ id: doc.id, ...doc.data() }); });
-            window.updateAdminBadge(); 
-        } catch (error) { console.error("Error al cargar las peticiones:", error); }
-    };
-
-    // --- LÓGICA DEL PANEL DE ADMINISTRADOR ---
-    window.approveRequest = (id) => {
-        const req = window.pendingRequests.find(r => r.id === id);
-        if(!req) return;
-        document.getElementById('modal-req-id').value = req.id;
-        document.getElementById('modal-title').value = req.title;
-        document.getElementById('modal-artists').value = req.artist;
-        document.getElementById('modal-genre').value = req.genre;
-        document.getElementById('modal-src').value = ""; 
-        document.getElementById('modal-duration').value = "0"; 
-        document.getElementById('admin-add-song-modal').classList.remove('hidden');
-        lucide.createIcons();
-    };
-
-    window.closeAddSongModal = () => { document.getElementById('admin-add-song-modal').classList.add('hidden'); };
-
-    document.getElementById('admin-add-song-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const btn = e.target.querySelector('button[type="submit"]');
-        btn.innerText = "Guardando...";
-        btn.disabled = true;
-
-        const reqId = document.getElementById('modal-req-id').value;
-        const artistasTexto = document.getElementById('modal-artists').value;
-        const arregloArtistas = artistasTexto.split(',').map(a => a.trim());
-
-        const nuevaCancionOficial = {
-            title: document.getElementById('modal-title').value,
-            artists: arregloArtistas,
-            genre: document.getElementById('modal-genre').value,
-            src: document.getElementById('modal-src').value,
-            duration: Number(document.getElementById('modal-duration').value) || 0
-        };
-
-        try {
-            await addDoc(collection(db, "songs"), nuevaCancionOficial);
-            await deleteDoc(doc(db, "requests", reqId));
-            window.showNotification("¡Canción publicada con éxito!");
-            window.closeAddSongModal();
-            await window.cargarCanciones();
-            await window.cargarPeticiones(); 
-        } catch (error) {
-            console.error("Error al guardar:", error);
-            window.showNotification("Hubo un error al guardar en Firebase");
-        } finally {
-            btn.innerText = "Guardar Canción Oficial";
-            btn.disabled = false;
-        }
-    });
-
-    window.rejectRequest = async (id) => {
-        if(!confirm("¿Estás seguro de eliminar esta petición?")) return;
-        try {
-            await deleteDoc(doc(db, "requests", id));
-            window.showNotification("Petición eliminada");
-            await window.cargarPeticiones(); 
-        } catch (error) { console.error("Error al borrar:", error); window.showNotification("Error al eliminar"); }
-    };
-
-    // --- LÓGICA DE FAVORITOS Y PREMIUM (CONECTADA A BD) ---
-
-    window.checkPremiumAccess = (action, songId) => {
-        // 1. Si no hay sesión, no puede hacer nada
-        if (!window.currentUser || !window.userData) {
-            window.showNotification("Debes iniciar sesión primero");
-            return;
-        }
-
-        // 2. Verificamos el rol o plan en la Base de Datos
-        const rol = window.userData.role;
-        const plan = window.userData.plan;
-
-        if (rol !== 'admin' && plan !== 'premium') {
-            // Si es basic, mostramos el muro de pago
-            window.changeView('premium-wall');
-        } else {
-            // Si es admin o premium, le damos permiso
-            if (action === 'library') window.showLibrary();
-            if (action === 'fav') window.toggleFavorite(songId);
-        }
-    };
-
-    window.toggleFavorite = async (id) => {
-        // Aseguramos que la lista exista
-        window.favorites = window.favorites || [];
-        
-        // Buscamos la canción en la lista general y vemos si ya es favorita
-        const song = window.songs.find(s => s.id === id);
-        const index = window.favorites.findIndex(f => f.id === id);
-
-        if (!song) return; // Si por algún motivo no encuentra la canción, se detiene
-
-        // Agregamos o quitamos
-        if (index === -1) {
-            window.favorites.push(song);
-            window.showNotification("Añadido a favoritos ❤️");
-        } else {
-            window.favorites.splice(index, 1);
-            window.showNotification("Eliminado de favoritos 💔");
-        }
-
-        // GUARDAMOS EN FIREBASE
-        try {
-            const userRef = doc(db, "users", window.currentUser.uid);
-            await updateDoc(userRef, {
-                favorites: window.favorites 
+                    adminNav.classList.add('hidden');
+                    window.currentUser = null;
+                }
             });
-        } catch(error) {
-            console.error("Error al guardar favorito en BD:", error);
-            window.showNotification("Error al guardar en la nube");
-        }
 
-        // Refrescamos la pantalla para que el corazón se pinte
-        if (document.getElementById('nav-library').classList.contains('active-link')) {
-            window.showLibrary();
-        } else {
-            // Si estamos en inicio, solo redibujamos la lista actual
-            window.renderSongs(window.currentPlaylist);
-        }
+            // --- LÓGICA DE SOLICITUDES (Peticiones de usuarios) ---
+            window.handleRequestSubmit = async (e) => {
+                e.preventDefault(); 
+                const btn = e.target.querySelector('button[type="submit"]');
+                const textoOriginal = btn.innerHTML;
+                btn.innerText = "Enviando...";
+                btn.disabled = true;
+
+                const nuevaPeticion = {
+                    title: document.getElementById('req-title').value,
+                    artist: document.getElementById('req-artist').value,
+                    genre: document.getElementById('req-genre').value,
+                    status: 'pending',
+                    fecha: new Date().toISOString()
+                };
+
+                try {
+                    await addDoc(collection(db, "requests"), nuevaPeticion);
+                    window.showNotification("¡Solicitud enviada con éxito!");
+                    e.target.reset(); 
+                    window.changeView('home'); 
+                    await window.cargarPeticiones(); 
+                } catch (error) {
+                    console.error("Error al enviar la solicitud:", error);
+                    window.showNotification("Hubo un error al enviar.");
+                } finally {
+                    btn.innerHTML = textoOriginal;
+                    btn.disabled = false;
+                    lucide.createIcons();
+                }
+            };
+
+            window.cargarPeticiones = async () => {
+                try {
+                    const querySnapshot = await getDocs(collection(db, "requests"));
+                    window.pendingRequests = []; 
+                    querySnapshot.forEach((doc) => { window.pendingRequests.push({ id: doc.id, ...doc.data() }); });
+                    window.updateAdminBadge(); 
+                } catch (error) { console.error("Error al cargar las peticiones:", error); }
+            };
+
+            // --- LÓGICA DEL PANEL DE ADMINISTRADOR ---
+            window.approveRequest = (id) => {
+                const req = window.pendingRequests.find(r => r.id === id);
+                if(!req) return;
+                document.getElementById('modal-req-id').value = req.id;
+                document.getElementById('modal-title').value = req.title;
+                document.getElementById('modal-artists').value = req.artist;
+                document.getElementById('modal-genre').value = req.genre;
+                document.getElementById('modal-src').value = ""; 
+                document.getElementById('modal-duration').value = "0"; 
+                document.getElementById('admin-add-song-modal').classList.remove('hidden');
+                lucide.createIcons();
+            };
+
+            window.closeAddSongModal = () => { document.getElementById('admin-add-song-modal').classList.add('hidden'); };
+
+            document.getElementById('admin-add-song-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const btn = e.target.querySelector('button[type="submit"]');
+                btn.innerText = "Guardando...";
+                btn.disabled = true;
+
+                const reqId = document.getElementById('modal-req-id').value;
+                const artistasTexto = document.getElementById('modal-artists').value;
+                const arregloArtistas = artistasTexto.split(',').map(a => a.trim());
+
+                const nuevaCancionOficial = {
+                    title: document.getElementById('modal-title').value,
+                    artists: arregloArtistas,
+                    genre: document.getElementById('modal-genre').value,
+                    src: document.getElementById('modal-src').value,
+                    duration: Number(document.getElementById('modal-duration').value) || 0
+                };
+
+                try {
+                    await addDoc(collection(db, "songs"), nuevaCancionOficial);
+                    await deleteDoc(doc(db, "requests", reqId));
+                    window.showNotification("¡Canción publicada con éxito!");
+                    window.closeAddSongModal();
+                    await window.cargarCanciones();
+                    await window.cargarPeticiones(); 
+                } catch (error) {
+                    console.error("Error al guardar:", error);
+                    window.showNotification("Hubo un error al guardar en Firebase");
+                } finally {
+                    btn.innerText = "Guardar Canción Oficial";
+                    btn.disabled = false;
+                }
+            });
+
+            window.rejectRequest = async (id) => {
+                if(!confirm("¿Estás seguro de eliminar esta petición?")) return;
+                try {
+                    await deleteDoc(doc(db, "requests", id));
+                    window.showNotification("Petición eliminada");
+                    await window.cargarPeticiones(); 
+                } catch (error) { console.error("Error al borrar:", error); window.showNotification("Error al eliminar"); }
+            };
+
+            // --- LÓGICA DE FAVORITOS Y PREMIUM (CONECTADA A BD) ---
+
+            window.checkPremiumAccess = (action, songId) => {
+                // 1. Si no hay sesión, no puede hacer nada
+                if (!window.currentUser || !window.userData) {
+                    window.showNotification("Debes iniciar sesión primero");
+                    return;
+                }
+
+                // 2. Verificamos el rol o plan en la Base de Datos
+                const rol = window.userData.role;
+                const plan = window.userData.plan;
+
+                if (rol !== 'admin' && plan !== 'premium') {
+                    // Si es basic, mostramos el muro de pago
+                    window.changeView('premium-wall');
+                } else {
+                    // Si es admin o premium, le damos permiso
+                    if (action === 'library') window.showLibrary();
+                    if (action === 'fav') window.toggleFavorite(songId);
+                }
+            };
+
+            window.toggleFavorite = async (id) => {
+                // Aseguramos que la lista exista
+                window.favorites = window.favorites || [];
         
-        // Actualizamos el reproductor de abajo por si esa canción está sonando
-        if (window.updateFavBtnUI) window.updateFavBtnUI(id);
-    };
+                // Buscamos la canción en la lista general y vemos si ya es favorita
+                const song = window.songs.find(s => s.id === id);
+                const index = window.favorites.findIndex(f => f.id === id);
 
-    window.showLibrary = () => {
-        window.changeView('home');
-        document.getElementById('nav-library').classList.add('active-link', 'text-white');
-        document.getElementById('nav-home').classList.remove('active-link', 'text-white');
-        document.getElementById('list-title').innerText = "Tu Biblioteca";
+                if (!song) return; // Si por algún motivo no encuentra la canción, se detiene
+
+                // Agregamos o quitamos
+                if (index === -1) {
+                    window.favorites.push(song);
+                    window.showNotification("Añadido a favoritos ❤️");
+                } else {
+                    window.favorites.splice(index, 1);
+                    window.showNotification("Eliminado de favoritos 💔");
+                }
+
+                // GUARDAMOS EN FIREBASE
+                try {
+                    const userRef = doc(db, "users", window.currentUser.uid);
+                    await updateDoc(userRef, {
+                        favorites: window.favorites 
+                    });
+                } catch(error) {
+                    console.error("Error al guardar favorito en BD:", error);
+                    window.showNotification("Error al guardar en la nube");
+                }
+
+                // Refrescamos la pantalla para que el corazón se pinte
+                if (document.getElementById('nav-library').classList.contains('active-link')) {
+                    window.showLibrary();
+                } else {
+                    // Si estamos en inicio, solo redibujamos la lista actual
+                    window.renderSongs(window.currentPlaylist);
+                }
         
-        window.renderSongs(window.favorites);
+                // Actualizamos el reproductor de abajo por si esa canción está sonando
+                if (window.updateFavBtnUI) window.updateFavBtnUI(id);
+            };
+
+            window.showLibrary = () => {
+                 window.changeView('home');
+                document.getElementById('nav-library').classList.add('active-link', 'text-white');
+                document.getElementById('nav-home').classList.remove('active-link', 'text-white');
+                document.getElementById('list-title').innerText = "Tu Biblioteca";
         
-        if(window.favorites.length === 0) {
-             document.getElementById('songs-grid').innerHTML = '<div class="col-span-full py-20 text-center text-zinc-500">Aún no tienes canciones favoritas.</div>';
-        }
-    };
+                window.renderSongs(window.favorites);
+        
+                if(window.favorites.length === 0) {
+                    document.getElementById('songs-grid').innerHTML = '<div class="col-span-full py-20 text-center text-zinc-500">Aún no tienes canciones favoritas.</div>';
+                }
+            };
 
-    // --- EJECUCIÓN INICIAL ---
-    cargarCanciones();
-    cargarPeticiones();
-    </script>
+            // --- EJECUCIÓN INICIAL ---
+            cargarCanciones();
+            cargarPeticiones();
+        </script>
 
-<div id="admin-add-song-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div class="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl admin-glow">
-        <div class="flex justify-between items-center mb-6">
-            <h3 class="text-xl font-bold flex items-center gap-2"><i data-lucide="database" class="text-blue-500"></i> Añadir a BD</h3>
-            <button onclick="closeAddSongModal()" class="text-zinc-500 hover:text-white transition-colors">
-                <i data-lucide="x"></i>
-            </button>
+        <div id="admin-add-song-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl admin-glow">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-bold flex items-center gap-2"><i data-lucide="database" class="text-blue-500"></i> Añadir a BD</h3>
+                    <button onclick="closeAddSongModal()" class="text-zinc-500 hover:text-white transition-colors">
+                        <i data-lucide="x"></i>
+                    </button>
+                </div>
+                <form id="admin-add-song-form" class="space-y-4">
+                    <input type="hidden" id="modal-req-id"> <div>
+                        <label class="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Título</label>
+                        <input type="text" id="modal-title" required class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Artista(s) <span class="text-[10px] text-zinc-600">(Sepáralos por coma)</span></label>
+                        <input type="text" id="modal-artists" required class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Género</label>
+                            <input type="text" id="modal-genre" required class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Duración (seg)</label>
+                            <input type="number" id="modal-duration" value="0" class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Ruta del Archivo (src)</label>
+                        <input type="text" id="modal-src" required placeholder="Musica/Genero/Cancion.mp3" class="w-full bg-black border border-blue-500/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors">
+                    </div>
+                    <button type="submit" class="w-full bg-blue-500 text-black py-3 rounded-lg font-bold hover:bg-emerald-400 transition-colors mt-4">
+                        Guardar Canción Oficial
+                    </button>
+                </form>
+            </div>
         </div>
-        
-        <form id="admin-add-song-form" class="space-y-4">
-            <input type="hidden" id="modal-req-id"> <div>
-                <label class="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Título</label>
-                <input type="text" id="modal-title" required class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors">
-            </div>
-            
-            <div>
-                <label class="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Artista(s) <span class="text-[10px] text-zinc-600">(Sepáralos por coma)</span></label>
-                <input type="text" id="modal-artists" required class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors">
-            </div>
-            
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Género</label>
-                    <input type="text" id="modal-genre" required class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Duración (seg)</label>
-                    <input type="number" id="modal-duration" value="0" class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors">
-                </div>
-            </div>
-
-            <div>
-                <label class="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Ruta del Archivo (src)</label>
-                <input type="text" id="modal-src" required placeholder="Musica/Genero/Cancion.mp3" class="w-full bg-black border border-blue-500/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors">
-            </div>
-
-            <button type="submit" class="w-full bg-blue-500 text-black py-3 rounded-lg font-bold hover:bg-emerald-400 transition-colors mt-4">
-                Guardar Canción Oficial
-            </button>
-        </form>
-    </div>
-</div>
-</body>
+    </body>
 </html>
