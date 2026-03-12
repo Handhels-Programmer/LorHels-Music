@@ -412,6 +412,9 @@ window.renderSongs = function(songsToRender, append = false) {
             <div class="mt-2 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
                  <span class="text-[10px] text-zinc-600 uppercase font-bold">${song.genre}</span>
                  <div class="flex items-center gap-3">
+                     <button onclick="event.stopPropagation(); window.checkPremiumAccess('download', '${song.id}')" class="text-zinc-500 hover:text-green-500" title="Descargar para escuchar sin internet">
+                         <i data-lucide="download-cloud" class="w-4 h-4"></i>
+                     </button>
                      <button onclick="event.stopPropagation(); window.checkPremiumAccess('add-playlist', '${song.id}')" class="text-zinc-500 hover:text-blue-500" title="Añadir a Playlist">
                          <i data-lucide="plus-circle" class="w-4 h-4"></i>
                      </button>
@@ -548,15 +551,30 @@ window.showNotification = function(t) {
 
 // --- 5. AUDIO HELPERS (REPRODUCTOR UNIFICADO) ---
 
-window.playSong = function(song) {
-    // Si elegimos una canción manualmente, se apaga la radio
+window.playSong = async function(song) {
     window.isRadioMode = false;
     
     const index = window.currentPlaylist.findIndex(s => s.id === song.id);
     if (index !== -1) window.currentSongIndex = index;
 
-    audio.src = song.src || song.url; 
-    audio.play();
+    let finalAudioSrc = song.src || song.url;
+
+    // --- MAGIA OFFLINE: REVISAMOS LA BÓVEDA ---
+    try {
+        const cache = await caches.open('lorhels-music-offline');
+        const respuestaCacheada = await cache.match(finalAudioSrc);
+        
+        if (respuestaCacheada) {
+            // Si la encontró, convertimos el archivo físico en un enlace local temporal
+            const blob = await respuestaCacheada.blob();
+            finalAudioSrc = URL.createObjectURL(blob);
+            console.log("¡Reproduciendo desde el almacenamiento Offline!");
+        }
+    } catch(e) { console.log("Error leyendo caché offline", e); }
+    // ------------------------------------------
+
+    audio.src = finalAudioSrc; 
+    audio.play().catch(e => console.log("Autoplay bloqueado"));
     window.isPlaying = true;
 
     document.getElementById('player-title').innerText = song.title;
@@ -874,6 +892,45 @@ window.toggleFavoriteCurrent = function() {
         } catch(e) { console.error("Error cargando playlists del admin", e); }
     };
 
+            // --- LÓGICA DE DESCARGA OFFLINE (Caché API) ---
+    window.downloadForOffline = async (songId) => {
+        const song = window.songs.find(s => s.id === songId);
+        if (!song || !song.src) {
+            window.showNotification("Esta canción no tiene un enlace de audio válido ❌");
+            return;
+        }
+
+        const urlAudio = song.src;
+
+        try {
+            // 1. Abrimos la bóveda del navegador
+            const cache = await caches.open('lorhels-music-offline');
+            
+            // 2. Revisamos si ya la descargó antes
+            const yaExiste = await cache.match(urlAudio);
+            if (yaExiste) {
+                window.showNotification("Esta canción ya está guardada en tu dispositivo 📱✅");
+                return;
+            }
+
+            window.showNotification("Descargando... no cierres la app ⏳");
+            
+            // 3. Vamos a buscar el MP3 a internet
+            const respuesta = await fetch(urlAudio);
+            
+            if (!respuesta.ok) throw new Error("No se pudo descargar");
+            
+            // 4. Guardamos el MP3 físico en la bóveda
+            await cache.put(urlAudio, respuesta);
+            
+            window.showNotification("¡Guardada! Ya puedes escucharla sin internet 🚀");
+            
+        } catch (error) {
+            console.error("Error en descarga offline:", error);
+            window.showNotification("Error: El servidor de la canción bloqueó la descarga ❌");
+        }
+    };
+
             // --- LÓGICA DE SOLICITUDES (Peticiones de usuarios) ---
             window.handleRequestSubmit = async (e) => {
                 e.preventDefault(); 
@@ -1009,7 +1066,8 @@ window.toggleFavoriteCurrent = function() {
         } else {
             if (action === 'library') window.showLibrary();
             if (action === 'fav') window.toggleFavorite(songId);
-            if (action === 'add-playlist') window.openAddToPlaylistModal(songId); // NUEVO
+            if (action === 'add-playlist') window.openAddToPlaylistModal(songId);
+            if (action === 'download') window.downloadForOffline(songId);
         }
     };
 
