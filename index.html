@@ -232,13 +232,22 @@
         </h3>
         <span id="admin-radio-status" class="text-xs font-bold text-zinc-500 uppercase tracking-widest">Fuera del aire</span>
     </div>
-    <div class="p-6 flex gap-4">
-        <button onclick="startRadio()" class="flex-1 bg-red-500 text-white py-3 rounded-lg text-sm font-bold hover:bg-red-400 transition-colors shadow-lg shadow-red-500/20">
-            Iniciar Transmisión
-        </button>
-        <button onclick="stopRadio()" class="flex-1 border border-zinc-700 text-zinc-300 py-3 rounded-lg text-sm font-bold hover:bg-zinc-800 transition-colors">
-            Detener
-        </button>
+    <div class="p-6 flex flex-col gap-4">
+        <div>
+            <label class="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Programación (Elige una Playlist)</label>
+            <select id="radio-playlist-selector" class="w-full bg-black border border-zinc-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-red-500 transition-colors text-white">
+                <option value="all">Todas las canciones del sistema</option>
+                </select>
+        </div>
+        
+        <div class="flex gap-4">
+            <button onclick="startRadio()" class="flex-1 bg-red-500 text-white py-3 rounded-lg text-sm font-bold hover:bg-red-400 transition-colors shadow-lg shadow-red-500/20">
+                Iniciar Transmisión
+            </button>
+            <button onclick="stopRadio()" class="flex-1 border border-zinc-700 text-zinc-300 py-3 rounded-lg text-sm font-bold hover:bg-zinc-800 transition-colors">
+                Detener
+            </button>
+        </div>
     </div>
 </div>
 
@@ -828,6 +837,7 @@ window.toggleFavoriteCurrent = function() {
                     if (window.userData.role === "admin") {
                         adminNav.classList.remove('hidden');
                         window.showNotification("¡Bienvenido, Administrador!");
+                        window.cargarPlaylistsAdmin();
                     } else {
                         adminNav.classList.add('hidden');
                         window.showNotification("¡Bienvenido de vuelta!");
@@ -844,6 +854,25 @@ window.toggleFavoriteCurrent = function() {
                     window.currentUser = null;
                 }
             });
+
+            // Carga las playlists del admin en el selector de la emisora
+    window.cargarPlaylistsAdmin = async () => {
+        const selector = document.getElementById('radio-playlist-selector');
+        if(!selector || !window.currentUser) return;
+
+        try {
+            const q = query(collection(db, "playlists"), where("ownerId", "==", window.currentUser.uid));
+            const querySnapshot = await getDocs(q);
+            
+            // Limpiamos y dejamos la opción por defecto
+            selector.innerHTML = '<option value="all">Todas las canciones del sistema</option>';
+            
+            querySnapshot.forEach((doc) => { 
+                const pl = doc.data();
+                selector.innerHTML += `<option value="${doc.id}">${pl.name} (${pl.songs ? pl.songs.length : 0} canciones)</option>`;
+            });
+        } catch(e) { console.error("Error cargando playlists del admin", e); }
+    };
 
             // --- LÓGICA DE SOLICITUDES (Peticiones de usuarios) ---
             window.handleRequestSubmit = async (e) => {
@@ -1317,16 +1346,38 @@ window.toggleFavoriteCurrent = function() {
     });
 
     // 2. Controles del Administrador
+    // 2. Controles del Administrador (Actualizado con Playlists)
     window.startRadio = async () => {
-        if(window.songs.length === 0) { window.showNotification("Sube canciones primero"); return; }
+        const selector = document.getElementById('radio-playlist-selector');
+        const playlistId = selector.value;
+        let cancionesParaLaRadio = [];
+
+        if (playlistId === "all") {
+            cancionesParaLaRadio = window.songs;
+        } else {
+            // Buscamos la playlist específica y filtramos sus canciones
+            try {
+                const docSnap = await getDoc(doc(db, "playlists", playlistId));
+                if (docSnap.exists()) {
+                    const pl = docSnap.data();
+                    cancionesParaLaRadio = window.songs.filter(s => pl.songs && pl.songs.includes(s.id));
+                }
+            } catch(e) { console.error("Error al leer la playlist", e); }
+        }
+
+        if(cancionesParaLaRadio.length === 0) { 
+            window.showNotification("Esta selección no tiene canciones ❌"); 
+            return; 
+        }
+
         try {
-            // Guardamos en Firebase que la radio empezó AHORA MISMO
+            // Guardamos la nueva lista en Firebase
             await setDoc(doc(db, "system", "radio"), {
                 status: "playing",
                 startTime: Date.now(), 
-                songs: window.songs // Usa todo tu catálogo musical
+                songs: cancionesParaLaRadio // ¡Solo las canciones elegidas!
             });
-            window.showNotification("📻 ¡Emisora iniciada al aire!");
+            window.showNotification("📻 ¡Emisora iniciada al aire con nueva programación!");
         } catch(e) { console.error("Error al iniciar radio:", e); }
     };
 
